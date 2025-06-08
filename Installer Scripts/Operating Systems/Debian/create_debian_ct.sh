@@ -46,7 +46,7 @@ Cores="2"
 RAM_MB="1024"
 FEATURES="nesting=1,fuse=1,keyctl=1"
 
-
+#
 # --- Ask the user for important details ---
 echo "--- Proxmox Debian CT Creator ---"
 read -r -p "Enter a new Container ID: " CTID
