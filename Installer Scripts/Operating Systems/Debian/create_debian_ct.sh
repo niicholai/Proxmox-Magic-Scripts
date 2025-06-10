@@ -2,7 +2,7 @@
 
 # Author: Niicholai Black
 # Date: 6/8/2025
-# Version: 0.2.2 - Updated 6/10/2025
+# Version: 0.3.0 - Updated 6/10/2025
 # License: AGPL-3.0 - https://github.com/niicholai/Proxmox-Magic-Scripts?tab=AGPL-3.0-1-ov-file#readme
 # Inspired by: tteckster
 # Rest in peace tteck - you helped a lot of people find an easier way to get into self-hosting, including myself.
@@ -93,6 +93,7 @@ function run_setup() {
   done
 
   read -r -p "Enter MAC Address (optional): " MAC
+  read -r -p "Will you be using Docker? [y/N]: " INSTALL_DOCKER
 
   # --- Network Configuration ---
   local net_config="name=eth0,bridge=$BRIDGE,ip=dhcp"
@@ -106,6 +107,11 @@ function run_setup() {
   create_container
   start_container
   update_container
+
+  # --- Check if Docker installation is required and install it ---
+  if [[ "$INSTALL_DOCKER" == "y" || "$INSTALL_DOCKER" == "Y" ]]; then
+    install_docker
+  fi
 }
 
 
