@@ -1,2 +1,35 @@
 # Proxmox-Magic-Scripts
 My take on simple, locally hosted, scripts to assist in automating Proxmox.
+
+# Who are you?
+I go by Niicholai Black, I am a simple guy with ADHD who enjoys simple things. I am a full time student working full time and have a hectic life outside of those with limited free time. I am most likely on a similar homelab journey as yourself. I started out wanting to test a few apps and see if self hosting could save me some money. It did save me money in the long run. I also really enjoyed doing it. It was a painful process initially with everything I had to learn, constant problems, errors and apps I didn't understand, so on and so forth. However, I have grown since, learned a ton of information, and met some pretty incredible people over in the RomM discord server's homelab channel. I also made a lot of progress after finding Ttek's helper scripts.
+
+# Tell me more about those scripts!
+Those scripts made my life so much easier. You throw the code to call for one into your terminal/shell and BAM, a few options later your app is installed and off you go for the most part. Then one day we all got the horrible news, Ttek had lost his fight. There were tears shed on YouTube, on Discord, and throughout the world online and off. Ttek's scripts helped many of us find an easier way to get into self hosting, and even experienced labbers found them great for convenience. I really want to stress this part: I would most likely not be here today working on this project, or self hosting and homelabbing at all without TTek's scripts. I gave up so many times until I found his scripts. They allowed me to focus on learning in smaller blocks, with less issues at one time, and move on to enjoy homelabbing. So where did that leave us? A group had come together and decided to take over TTek's work, thus came the new Proxmox Helper Scripts. They have their own website and repo, and you're more than welcome to go check them out. They have an incredible amount of scripts available with more coming regularly.
+
+# Then why make your scripts?
+Well, partially for learning, I've never scripted before so I really wanted to try my hand at it and see how it goes. Partially for customization, once I knew how the scripts worked (they're BASH scripts), I'd be able to customize them however I feel like according to my wants/needs. Another reason, is I do not like the idea of ranomly calling someone else's scripts using bash, curl, and giving it full power to do wwhatever it wants on my node from root. It's simply a security risk. I do not know the Helper Script team, and this is not a slight at them nor am I accusing them of being malicious. I simply do not know them, do not like the idea of this practice, and wanted to find a different way. As we're homelabbers and self hoster's, it occured to me to make scripts with the intention of them being hosted locally, and I'm trying my best to write the scripts with comments to make it easier for everyone to look at them and be able to understand what they are doing in the background.
+
+# Where does that leave me?
+Well, you have options now! You can either go use the Helper Scripts which are well made and far beyond what I have at this time if you're fine with how they operate, try to find another set of scripts, install everything manually yourself like the good old days, or follow along on my journey with me. If you decide to stick around and follow the journey that will be my scripting repo, then hopefully my scripts will help you learn as well. My goal is to make scripts that are simple enough, with enough comments in them, for you to not only be able to use them, but to learn what they do, where they do it, how they do it, and why they work the way they do. I want you to understand them, not just use them, so you know what is happening to your system. Nothing is more harmful than an uninformed decision, it's a gamble with your software, hardware, network, and potentially very sensitive data. So let's try to remedy that with these scripts!
+
+# Roadmap:
+- Finalize build functions for first full release.
+- Finalize Debian 12 LXC script for first full release.
+- Add first application script for release.
+- Add documents going further in detail about how each script works for users to read.
+
+# Tribute:
+I was going to end this with the roadmap for now, but as I sit here in my feelings looking back, I really wanted to make sure those who find this repo truly understand how much TTek and his scripts helped some of us. When I say I most likely wouldn't be self hosting or homelabbing, I mean that in the literal sense. Between my ADHD, other mental health issues, home life, chaotic schedules, limited help, and the rude chaos that is most homelab discord servers and channels, I had given up. I was ready to wipe it all and do what I could with Windows or maybe try a different way that wasn't Proxmox. It was far too much. Then I found TTek's scripts and it changed everything. Now I could slap in a script, make a few choices, and BAM, app is ready. Sure, I might have needed to make a quick adjustment or two depending on my setup, but that was so minimal compared to reading all of the docs, trying to figure out how to install something, then install errors, then the LXC not working, then learning Docker, etc. It was miserable, and TTek made it bearable enough with his work that I was able to take everything in, in smaller bites, and learn enough as I went to where I got more comfortable running my Proxmox node and troubleshooting whatever came up.
+
+Then we lost him. Maybe it's just who I am, maybe it's my mental stuff going on, maybe I'm just that empathetic. But I want to be clear, though I never met or spoke to the man, that shit hurt, and it still hurts. I followed his work for quite some time, he helped me so much and made the thing I wanted so badly go from absolutely miserable, to something I now love and interact with daily. He influenced me and changed an entire part of my life for the better, and I will never be able to truly thank him for that. I'll never be able to send him a message and truly, genuinely, thank him for his assistance and tell him how much he helped me. So instead I'll do what I can do. His name will forever be in every single one of my scripts as my inspiration. This tribute will stand forever as long as long as this repo stands. Finally, I will tell every single person I can about TTek. I don't forget those who have helped me, and I won't forget TTek.
+
+# Shoutout:
+There are still some others I would like to give a shoutout to, people who have helped me along the way.
+- RomM discord server's homelab channel: This discord is full of a bunch of great people, and their homelab channel is the first place I found that feels like home. Their project is for working with your self hosted emulation library, but don't sleep on their homelab channel. You can check out the RomM project over at: https://github.com/rommapp/romm
+- danblu3
+- Mr Moon
+- Coragar
+- Doakyz
+- Ryubasteon
+- That one loser Canadian guy who keeps laughing at me from behind his goose army
