@@ -23,7 +23,7 @@ DEV_PASSWORD="password"
 TEMPLATE_DIR="/opt/qcow2/arch_linux"
 TEMPLATE_FILE="$TEMPLATE_DIR/Arch-Linux-x86_64-cloudimg.qcow2"
 TEMPLATE_URL="https://geo.mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg.qcow2"
-USER_DATA_FILE="/root/arch-dev-userdata.yaml"
+USER_DATA_FILE="$TEMPLATE_DIR/arch-dev-userdata.yaml"
 
 # --- Helper Functions ---
 function error_handler() {
