@@ -57,16 +57,14 @@ user:
   shell: /bin/bash
 ssh_pwauth: true
 
-# --- v17 Change: Network Configuration ---
-# This uses version 2 and EXPLICITLY sets the renderer to 'networkd',
-# which is what the Arch Linux image uses. This should prevent
-# the 125-second timeout and schema validation errors.
+# --- Network Configuration ---
 network:
   version: 2
   renderer: networkd
   ethernets:
     eth0:
       dhcp4: true
+      optional: true
 
 # --- Package Management ---
 package_update: true
