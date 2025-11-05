@@ -48,6 +48,8 @@ cat > $SNIPPET_PATH << EOF
 #cloud-config
 
 # --- User Configuration ---
+# v18: REMOVED the invalid 'network:' block.
+# Networking will be handled by Proxmox via '--ipconfig0'
 user:
   name: ${USERNAME}
   passwd: "${PASSWORD}"
@@ -57,16 +59,10 @@ user:
   shell: /bin/bash
 ssh_pwauth: true
 
-# --- Network Configuration ---
-network:
-  version: 2
-  renderer: networkd
-  ethernets:
-    eth0:
-      dhcp4: true
-      optional: true
-
 # --- Package Management ---
+# This is also a critical fix. We are now using
+# the proper 'packages' module, which Cloud-Init
+# is designed to run *after* the network is online.
 package_update: true
 package_upgrade: true
 packages:
@@ -129,8 +125,7 @@ runcmd:
   - chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.bash_profile
 EOF
 
-# --- Conditionally add the SSH key (v17 Fix) ---
-# This anchors to the 'shell' line, placing the key *inside* the 'user' block.
+# --- Conditionally add the SSH key ---
 if [ -n "$PUB_KEY" ]; then
     log "Adding provided public SSH key..."
     sed -i "/^  shell: \/bin\/bash/a\  ssh_authorized_keys:\n    - ${PUB_KEY}" $SNIPPET_PATH
@@ -150,7 +145,7 @@ qm create $VMID --name $VM_NAME --memory $RAM_MB --cores $CPU_CORES \
 log "Setting CPU type to 'host'..."
 qm set $VMID --cpu host
 
-log "Setting machine type to q35..."
+log "Setting machine type to 'q35'..."
 qm set $VMID --machine q35
 
 log "Setting display to QXL for SPICE..."
@@ -170,7 +165,10 @@ qm set $VMID --boot order=scsi0
 log "Attaching Cloud-Init drive..."
 qm set $VMID --ide2 $STORAGE:cloudinit
 
-# --- v17 FIX: Corrected variable $VMID ---
+# --- v18: This is the fix ---
+log "Setting Cloud-Init networking (via Proxmox)..."
+qm set $VMID --ipconfig0 ip=dhcp
+
 log "Setting serial console..."
 qm set $VMID --serial0 socket
 qm set $VMID --cicustom "user=local:snippets/cloud-init-${VM_NAME}.yaml"
@@ -185,7 +183,7 @@ log "Starting VM ${VMID}..."
 qm start $VMID
 
 log "--- All Done! ---"
-log "VM is booting. This version (v17) fixes the serial port and uses the correct 'networkd' renderer."
-log "The 125s network timeout should be GONE."
+log "VM is booting. This version (v18) uses '--ipconfig0' to handle networking."
+log "The 125s timeout and schema validation errors should be GONE."
 log "Watch with: qm terminal $VMID"
-log "This should now connect. You will see a long pause during 'modules:config' as pacman runs."
+log "You should see it boot quickly, then pause for a long time on 'Cloud-init: ... modules:config' as pacman runs."
