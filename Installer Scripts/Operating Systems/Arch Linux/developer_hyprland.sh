@@ -57,20 +57,18 @@ user:
   shell: /bin/bash
 ssh_pwauth: true
 
-# --- v16 Change: Network Configuration ---
-# This block is processed during the 'network' stage, BEFORE the 125s timeout.
-# This configures eth0 to get an IP via DHCP immediately on boot.
+# --- v17 Change: Network Configuration ---
+# This uses version 2 and EXPLICITLY sets the renderer to 'networkd',
+# which is what the Arch Linux image uses. This should prevent
+# the 125-second timeout and schema validation errors.
 network:
-  version: 1
-  config:
-  - type: physical
-    name: eth0
-    subnets:
-    - type: dhcp
+  version: 2
+  renderer: networkd
+  ethernets:
+    eth0:
+      dhcp4: true
 
-# --- v16 Change: Use Cloud-Init's Package Manager ---
-# This is the proper way to install packages.
-# It runs *after* the network is confirmed online.
+# --- Package Management ---
 package_update: true
 package_upgrade: true
 packages:
@@ -95,10 +93,9 @@ packages:
   - notepadqq
   - samba
 
-# --- vf16 Change: Cleaned up runcmd ---
-# This now *only* runs system commands *after* packages are installed.
+# --- Post-Install Commands ---
 runcmd:
-  # 1. Init pacman keys (just in case, though packages should be done)
+  # 1. Init pacman keys (just in case)
   - [ pacman-key, --init ]
   - [ pacman-key, --populate ]
   
@@ -134,10 +131,11 @@ runcmd:
   - chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.bash_profile
 EOF
 
-# --- Conditionally add the SSH key ---
+# --- Conditionally add the SSH key (v17 Fix) ---
+# This anchors to the 'shell' line, placing the key *inside* the 'user' block.
 if [ -n "$PUB_KEY" ]; then
     log "Adding provided public SSH key..."
-    sed -i "/^ssh_pwauth: true/a\  ssh_authorized_keys:\n    - ${PUB_KEY}" $SNIPPET_PATH
+    sed -i "/^  shell: \/bin\/bash/a\  ssh_authorized_keys:\n    - ${PUB_KEY}" $SNIPPET_PATH
 else
     log "No SSH key provided. Skipping."
 fi
@@ -174,8 +172,9 @@ qm set $VMID --boot order=scsi0
 log "Attaching Cloud-Init drive..."
 qm set $VMID --ide2 $STORAGE:cloudinit
 
+# --- v17 FIX: Corrected variable $VMID ---
 log "Setting serial console..."
-qm set $VMVideoScribe --serial0 socket
+qm set $VMID --serial0 socket
 qm set $VMID --cicustom "user=local:snippets/cloud-init-${VM_NAME}.yaml"
 
 log "Setting CI user..."
@@ -188,7 +187,7 @@ log "Starting VM ${VMID}..."
 qm start $VMID
 
 log "--- All Done! ---"
-log "VM is booting. This version (v16) uses a standard 'network:' block."
+log "VM is booting. This version (v17) fixes the serial port and uses the correct 'networkd' renderer."
 log "The 125s network timeout should be GONE."
 log "Watch with: qm terminal $VMID"
-log "You should see it connect, then pause for a long time on 'Cloud-init: ... modules:config' as it runs pacman."
+log "This should now connect. You will see a long pause during 'modules:config' as pacman runs."
