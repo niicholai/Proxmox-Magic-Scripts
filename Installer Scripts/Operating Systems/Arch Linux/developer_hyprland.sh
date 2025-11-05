@@ -109,7 +109,6 @@ EOF
 # --- Conditionally add the SSH key ---
 if [ -n "$PUB_KEY" ]; then
     log "Adding provided public SSH key..."
-    # This appends the ssh_authorized_keys section after the 'shell:' line
     sed -i "/^  shell: \/bin\/bash/a\  ssh_authorized_keys:\n    - ${PUB_KEY}" $SNIPPET_PATH
 else
     log "No SSH key provided. Skipping."
@@ -120,10 +119,10 @@ log "Destroying old VM ${VMID} (if exists)..."
 qm destroy $VMID --purge || true
 
 log "Creating VM ${VMID} (${VM_NAME})..."
-# --- FIX: Correct syntax for iothread ---
+# --- FIX: Set controller to virtio-scsi-pci. (NO iothread here) ---
 qm create $VMID --name $VM_NAME --memory $RAM_MB --cores $CPU_CORES \
     --net0 virtio,bridge=$BRIDGE --ostype l26 --onboot 1 \
-    --scsihw virtio-scsi-pci --iothread 1
+    --scsihw virtio-scsi-pci
 
 log "Setting CPU type to 'host'..."
 qm set $VMID --cpu host
@@ -142,10 +141,11 @@ rm "$IMAGE_FILE"
 log "Removed $IMAGE_FILE."
 
 log "Attaching imported disk with performance options..."
-qm set $VMID --scsi0 $STORAGE:vm-$VMID-disk-0,cache=$DISK_CACHE,discard=on,ssd=1
+# --- FIX: Use 'queues=$CPU_CORES' instead of 'iothread=1' ---
+qm set $VMID --scsi0 $STORAGE:vm-$VMID-disk-0,cache=$DISK_CACHE,discard=on,ssd=1,queues=$CPU_CORES
 qm set $VMID --boot order=scsi0
 
-log "AttBaching Cloud-Init drive..."
+log "Attaching Cloud-Init drive..."
 qm set $VMID --ide2 $STORAGE:cloudinit
 
 log "Setting serial console..."
@@ -159,7 +159,7 @@ log "Resizing disk..."
 qm resize $VMID scsi0 ${DISK_SIZE}
 
 log "Starting VM ${VMID}..."
-qm start $VMID
+qm start $VMVIM
 
 log "--- All Done! ---"
 log "VM is booting. Cloud-Init will now take over inside the VM."
