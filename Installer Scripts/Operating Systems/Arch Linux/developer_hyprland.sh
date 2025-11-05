@@ -46,6 +46,11 @@ SNIPPET_PATH="/var/lib/vz/snippets/cloud-init-${VM_NAME}.yaml"
 # Create the base YAML file
 cat > $SNIPPET_PATH << EOF
 #cloud-config
+
+network:
+  version: 2
+  renderer: NetworkManager
+
 user:
   name: ${USERNAME}
   passwd: "${PASSWORD}"
@@ -80,7 +85,7 @@ packages:
   - samba
 
 runcmd:
-  - [ systemctl, enable, NetworkManager ]
+  # NetworkManager is already enabled by the 'network:' block, but we ensure it's started
   - [ systemctl, start, NetworkManager ]
   - [ systemctl, enable, docker ]
   - [ systemctl, start, docker ]
@@ -162,5 +167,5 @@ qm start $VMID
 log "--- All Done! ---"
 log "VM is booting. Cloud-Init will now take over inside the VM."
 log "This may take 5-10 minutes for all packages to install."
-log "You can watch the setup with: qm serial $VMID"
+log "You can watch the setup with: qm terminal $VMID"
 log "Find the VM's IP in your router's DHCP list to SSH or connect via SPICE."
