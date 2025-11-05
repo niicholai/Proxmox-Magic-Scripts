@@ -134,8 +134,11 @@ qm set $VMID --scsi0 $STORAGE:vm-$VMID-disk-0,cache=$DISK_CACHE,discard=on,ssd=1
 qm set $VMID --boot order=scsi0
 
 log "Attaching Cloud-Init drive..."
-qm set $VMID --ide2 $LOCAL_STORAGE:cloudinit
-qm set $VMID --serial0 socket --vga1 serial0
+# --- FIX 1: Create cloud-init disk on $STORAGE (local-zfs), not $LOCAL_STORAGE (local) ---
+qm set $VMID --ide2 $STORAGE:cloudinit
+
+# --- FIX 2: Correct serial console syntax ---
+qm set $VMID --serial0 socket
 qm set $VMID --cicustom "user=local:snippets/cloud-init-${VM_NAME}.yaml"
 
 log "Setting CI user..."
