@@ -8,8 +8,8 @@ RAM_MB=12288
 DISK_SIZE=150G
 DISK_CACHE="writethrough"
 BRIDGE="vmbr0"
-STORAGE="local-zfs"     # Storage for the new VM disk
-LOCAL_STORAGE="local"     # Storage for the Cloud-Init snippet & qcow2 image
+STORAGE="local-zfs"      # Storage for the new VM disk
+LOCAL_STORAGE="local"      # Storage for the Cloud-Init snippet & qcow2 image
 
 # User settings
 USERNAME="dev"
@@ -33,7 +33,7 @@ echo "Press ENTER to skip and use password-only."
 read -p "Your SSH Public Key: " PUB_KEY
 
 # --- 2. Download Arch Cloud-Image (if it doesn't exist) ---
-if [ ! -f "$IMAGE_FILE" ]; then
+if [! -f "$IMAGE_FILE" ]; then
     log "Downloading Arch Linux cloud image to $IMAGE_FILE..."
     mkdir -p $IMAGE_DIR
     wget -O "$IMAGE_FILE" "$IMAGE_URL"
@@ -51,45 +51,29 @@ user:
   name: ${USERNAME}
   passwd: "${PASSWORD}"
   chpasswd: { expire: False }
-  sudo: ['ALL=(ALL) NOPASSWD:ALL']
+  sudo:
   groups: [wheel, docker]
   shell: /bin/bash
 ssh_pwauth: true
 
-# Use write_files, which runs before runcmd, to set up the network.
-write_files:
-- path: /etc/systemd/network/20-wired.network
-  content: |
-    [Match]
-    Name=eth0
-    
-    [Network]
-    DHCP=yes
+# The 'write_files' block has been removed.
+# Network is now handled by Proxmox's '--ipconfig0'
 
 # This block will be empty, we are doing it in runcmd
-packages: []
+packages:
 
 # This block is empty, we are doing it in runcmd
 package_update: false
 
 runcmd:
-  # --- 1. Manually start the network ---
-  - [ systemctl, daemon-reload ]
-  - [ systemctl, enable, systemd-networkd ]
-  - [ systemctl, restart, systemd-networkd ]
-  
-  # --- 2. Wait for the network to actually be online ---
-  # This will wait up to 60 seconds for an IP.
-  - |
-    timeout 60 bash -c 'until ip addr show eth0 | grep "inet "; do sleep 1; done'
-
-  # --- 3. Manually update and install packages ---
+  # --- 1. Manually update and install packages ---
+  # The network will be online at this point.
   - [ pacman-key, --init ]
   - [ pacman-key, --populate ]
-  - [ pacman, -Syu, --noconfirm ]
-  - [ pacman, -S, --noconfirm, base, base-devel, git, sudo, hyprland, alacritty, kitty, neovim, nodejs, npm, python, python-pip, go, docker, docker-compose, firefox, chromium, thunderbird, onlyoffice-bin, notepadqq, samba ]
+  -
+  -
 
-  # --- 4. Run all the other setup commands ---
+  # --- 2. Run all the other setup commands ---
   - [ systemctl, enable, docker ]
   - [ systemctl, start, docker ]
   - [ systemctl, enable, smb ]
@@ -101,21 +85,21 @@ runcmd:
   - mkdir -p /etc/systemd/system/getty@tty1.service.d
   - |
     cat > /etc/systemd/system/getty@tty1.service.d/override.conf << EOL
-    [Service]
+   
     ExecStart=
     ExecStart=-/sbin/agetty --autologin ${USERNAME} --noclear %I \$TERM
     EOL
   - systemctl daemon-reload
   - |
     echo '
-    if [ -z "\$DISPLAY" ] && [ "\$(tty)" = "/dev/tty1" ]; then
+    if && [ "\$(tty)" = "/dev/tty1" ]; then
       exec Hyprland
     fi' >> /home/${USERNAME}/.bash_profile
   - chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.bash_profile
 EOF
 
 # --- Conditionally add the SSH key ---
-if [ -n "$PUB_KEY" ]; then
+if; then
     log "Adding provided public SSH key..."
     sed -i "/^  shell: \/bin\/bash/a\  ssh_authorized_keys:\n    - ${PUB_KEY}" $SNIPPET_PATH
 else
@@ -124,7 +108,9 @@ fi
 
 # --- 4. Create and Configure VM ---
 log "Destroying old VM ${VMID} (if exists)..."
-qm destroy $VMID --purge || true
+qm destroy $VMID --purge |
+
+| true
 
 log "Creating VM ${VMID} (${VM_NAME})..."
 qm create $VMID --name $VM_NAME --memory $RAM_MB --cores $CPU_CORES \
@@ -154,6 +140,9 @@ qm set $VMID --boot order=scsi0
 log "Attaching Cloud-Init drive..."
 qm set $VMID --ide2 $STORAGE:cloudinit
 
+log "Setting Cloud-Init network to DHCP..."
+qm set $VMID --ipconfig0 ip=dhcp
+
 log "Setting serial console..."
 qm set $VMID --serial0 socket
 qm set $VMID --cicustom "user=local:snippets/cloud-init-${VM_NAME}.yaml"
@@ -168,6 +157,6 @@ log "Starting VM ${VMID}..."
 qm start $VMID
 
 log "--- All Done! ---"
-log "VM is booting. This time, all logic is in 'runcmd'."
+log "VM is booting. The network should now come up correctly."
 log "This WILL take a long time. Watch with: qm terminal $VMID"
-log "You will see the network start, then a long pause for pacman."
+log "You should see pacman running instead of a network timeout."
