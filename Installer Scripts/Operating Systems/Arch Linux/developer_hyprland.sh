@@ -14,7 +14,6 @@ LOCAL_STORAGE="local"     # Storage for the Cloud-Init snippet & qcow2 image
 # User settings
 USERNAME="dev"
 PASSWORD="password" # Set a strong password here
-SSH_PUB_KEY="ssh-rsa AAAA...your...key...here" # Add your SSH public key
 
 # Image settings
 IMAGE_URL="https://fastly.mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg.qcow2"
@@ -26,17 +25,25 @@ function log() {
     echo "$(date +'%Y-%m-%d %H:%M:%S') $1"
 }
 
-# --- 1. Download Arch Cloud-Image (if it doesn't exist) ---
+# --- 1. Get SSH Key Interactively ---
+echo "--- SSH Key Setup ---"
+echo "Please paste your SSH public key (e.g., 'ssh-rsa AAAA...')."
+echo "This will be added to the 'dev' user."
+echo "Press ENTER to skip and use password-only."
+read -p "Your SSH Public Key: " PUB_KEY
+
+# --- 2. Download Arch Cloud-Image (if it doesn't exist) ---
 if [ ! -f "$IMAGE_FILE" ]; then
     log "Downloading Arch Linux cloud image to $IMAGE_FILE..."
     mkdir -p $IMAGE_DIR
     wget -O "$IMAGE_FILE" "$IMAGE_URL"
 fi
 
-# --- 2. Create Cloud-Init Config Snippet ---
+# --- 3. Create Cloud-Init Config Snippet ---
 log "Creating Cloud-Init config snippet..."
 SNIPPET_PATH="/var/lib/vz/snippets/cloud-init-${VM_NAME}.yaml"
 
+# Create the base YAML file
 cat > $SNIPPET_PATH << EOF
 #cloud-config
 user:
@@ -46,11 +53,7 @@ user:
   sudo: ['ALL=(ALL) NOPASSWD:ALL']
   groups: [wheel, docker]
   shell: /bin/bash
-  ssh_authorized_keys:
-    - ${SSH_PUB_KEY}
-
 ssh_pwauth: true
-
 package_update: true
 packages:
   - base
@@ -103,15 +106,22 @@ runcmd:
   - chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.bash_profile
 EOF
 
-log "Cloud-Init config created at ${SNIPPET_PATH}"
+# --- Conditionally add the SSH key ---
+if [ -n "$PUB_KEY" ]; then
+    log "Adding provided public SSH key..."
+    # This appends the ssh_authorized_keys section after the 'shell:' line
+    sed -i "/^  shell: \/bin\/bash/a\  ssh_authorized_keys:\n    - ${PUB_KEY}" $SNIPPET_PATH
+else
+    log "No SSH key provided. Skipping."
+fi
 
-# --- 3. Create and Configure VM ---
+# --- 4. Create and Configure VM ---
 log "Destroying old VM ${VMID} (if exists)..."
 qm destroy $VMID --purge || true
 
 log "Creating VM ${VMID} (${VM_NAME})..."
 qm create $VMID --name $VM_NAME --memory $RAM_MB --cores $CPU_CORES \
-    --net0 virtio,bridge=$BRIDGE --ostype l26 --onboot 1 --scsihw virtio-scsi-pci
+    --net0 virtio,bridge=$BRIDGE --ostype l26 --onboot 1 --scsihw virtio-scsi-pci,iothread=1
 
 log "Setting CPU type to 'host'..."
 qm set $VMID --cpu host
@@ -130,14 +140,13 @@ rm "$IMAGE_FILE"
 log "Removed $IMAGE_FILE."
 
 log "Attaching imported disk with performance options..."
-qm set $VMID --scsi0 $STORAGE:vm-$VMID-disk-0,cache=$DISK_CACHE,discard=on,ssd=1,iothread=1
+qm set $VMID --scsi0 $STORAGE:vm-$VMID-disk-0,cache=$DISK_CACHE,discard=on,ssd=1
 qm set $VMID --boot order=scsi0
 
 log "Attaching Cloud-Init drive..."
-# --- FIX 1: Create cloud-init disk on $STORAGE (local-zfs), not $LOCAL_STORAGE (local) ---
 qm set $VMID --ide2 $STORAGE:cloudinit
 
-# --- FIX 2: Correct serial console syntax ---
+log "Setting serial console..."
 qm set $VMID --serial0 socket
 qm set $VMID --cicustom "user=local:snippets/cloud-init-${VM_NAME}.yaml"
 
