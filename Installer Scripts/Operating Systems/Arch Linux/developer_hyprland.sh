@@ -49,7 +49,9 @@ cat > $SNIPPET_PATH << EOF
 
 network:
   version: 2
-  renderer: NetworkManager
+  ethernets:
+    eth0:
+      dhcp4: true
 
 user:
   name: ${USERNAME}
@@ -65,7 +67,7 @@ packages:
   - base-devel
   - git
   - sudo
-  - networkmanager
+  # - networkmanager # Removed, conflicts with networkd
   - hyprland
   - alacritty
   - kitty
@@ -85,8 +87,7 @@ packages:
   - samba
 
 runcmd:
-  # NetworkManager is already enabled by the 'network:' block, but we ensure it's started
-  - [ systemctl, start, NetworkManager ]
+  # systemd-networkd is already enabled by the 'network:' block
   - [ systemctl, enable, docker ]
   - [ systemctl, start, docker ]
   - [ systemctl, enable, smb ]
