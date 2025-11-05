@@ -13,7 +13,7 @@ LOCAL_STORAGE="local"     # Storage for the Cloud-Init snippet & qcow2 image
 
 # User settings
 USERNAME="dev"
-PASSWORD="password" # Set a strong password here
+PASSWORD="password"
 
 # Image settings
 IMAGE_URL="https://fastly.mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg.qcow2"
@@ -47,12 +47,6 @@ SNIPPET_PATH="/var/lib/vz/snippets/cloud-init-${VM_NAME}.yaml"
 cat > $SNIPPET_PATH << EOF
 #cloud-config
 
-network:
-  version: 2
-  ethernets:
-    eth0:
-      dhcp4: true
-
 user:
   name: ${USERNAME}
   passwd: "${PASSWORD}"
@@ -61,33 +55,41 @@ user:
   groups: [wheel, docker]
   shell: /bin/bash
 ssh_pwauth: true
-package_update: true
-packages:
-  - base
-  - base-devel
-  - git
-  - sudo
-  # - networkmanager # Removed, conflicts with networkd
-  - hyprland
-  - alacritty
-  - kitty
-  - neovim
-  - nodejs
-  - npm
-  - python
-  - python-pip
-  - go
-  - docker
-  - docker-compose
-  - firefox
-  - chromium
-  - thunderbird
-  - onlyoffice-bin
-  - notepadqq
-  - samba
+
+# Use write_files, which runs before runcmd, to set up the network.
+write_files:
+- path: /etc/systemd/network/20-wired.network
+  content: |
+    [Match]
+    Name=eth0
+    
+    [Network]
+    DHCP=yes
+
+# This block will be empty, we are doing it in runcmd
+packages: []
+
+# This block is empty, we are doing it in runcmd
+package_update: false
 
 runcmd:
-  # systemd-networkd is already enabled by the 'network:' block
+  # --- 1. Manually start the network ---
+  - [ systemctl, daemon-reload ]
+  - [ systemctl, enable, systemd-networkd ]
+  - [ systemctl, restart, systemd-networkd ]
+  
+  # --- 2. Wait for the network to actually be online ---
+  # This will wait up to 60 seconds for an IP.
+  - |
+    timeout 60 bash -c 'until ip addr show eth0 | grep "inet "; do sleep 1; done'
+
+  # --- 3. Manually update and install packages ---
+  - [ pacman-key, --init ]
+  - [ pacman-key, --populate ]
+  - [ pacman, -Syu, --noconfirm ]
+  - [ pacman, -S, --noconfirm, base, base-devel, git, sudo, hyprland, alacritty, kitty, neovim, nodejs, npm, python, python-pip, go, docker, docker-compose, firefox, chromium, thunderbird, onlyoffice-bin, notepadqq, samba ]
+
+  # --- 4. Run all the other setup commands ---
   - [ systemctl, enable, docker ]
   - [ systemctl, start, docker ]
   - [ systemctl, enable, smb ]
@@ -166,7 +168,6 @@ log "Starting VM ${VMID}..."
 qm start $VMID
 
 log "--- All Done! ---"
-log "VM is booting. Cloud-Init will now take over inside the VM."
-log "This may take 5-10 minutes for all packages to install."
-log "You can watch the setup with: qm terminal $VMID"
-log "Find the VM's IP in your router's DHCP list to SSH or connect via SPICE."
+log "VM is booting. This time, all logic is in 'runcmd'."
+log "This WILL take a long time. Watch with: qm terminal $VMID"
+log "You will see the network start, then a long pause for pacman."
