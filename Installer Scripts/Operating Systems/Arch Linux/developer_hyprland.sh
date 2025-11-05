@@ -56,8 +56,8 @@ user:
   shell: /bin/bash
 ssh_pwauth: true
 
-# The 'write_files' block has been removed.
-# Network is now handled by Proxmox's '--ipconfig0'
+# The 'write_files' block for networking has been removed.
+# Proxmox will now handle this with the '--ipconfig0' flag.
 
 # This block will be empty, we are doing it in runcmd
 packages:
@@ -67,7 +67,8 @@ package_update: false
 
 runcmd:
   # --- 1. Manually update and install packages ---
-  # The network will be online at this point.
+  # The network commands have been removed.
+  # Proxmox's ipconfig0 ensures the network is online before runcmd.
   - [ pacman-key, --init ]
   - [ pacman-key, --populate ]
   -
@@ -140,8 +141,10 @@ qm set $VMID --boot order=scsi0
 log "Attaching Cloud-Init drive..."
 qm set $VMID --ide2 $STORAGE:cloudinit
 
+# --- THIS IS THE FIX ---
 log "Setting Cloud-Init network to DHCP..."
 qm set $VMID --ipconfig0 ip=dhcp
+# --- END FIX ---
 
 log "Setting serial console..."
 qm set $VMID --serial0 socket
