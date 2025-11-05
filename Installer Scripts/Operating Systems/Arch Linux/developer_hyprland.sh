@@ -30,7 +30,7 @@ echo "--- SSH Key Setup ---"
 echo "Please paste your SSH public key (e.g., 'ssh-rsa AAAA...')."
 echo "This will be added to the 'dev' user."
 echo "Press ENTER to skip and use password-only."
-read -p "Your SSH Public Key: " PUB_KEY
+read -p "Your SSH Key: " PUB_KEY
 
 # --- 2. Download Arch Cloud-Image (if it doesn't exist) ---
 if [ ! -f "$IMAGE_FILE" ]; then
@@ -47,6 +47,7 @@ SNIPPET_PATH="/var/lib/vz/snippets/cloud-init-${VM_NAME}.yaml"
 cat > $SNIPPET_PATH << EOF
 #cloud-config
 
+# --- User Configuration ---
 user:
   name: ${USERNAME}
   passwd: "${PASSWORD}"
@@ -56,48 +57,65 @@ user:
   shell: /bin/bash
 ssh_pwauth: true
 
-# Use write_files, which runs before runcmd, to set up the network.
-write_files:
-- path: /etc/systemd/network/20-wired.network
-  content: |
-    [Match]
-    Name=eth0
-    
-    [Network]
-    DHCP=yes
+# --- v16 Change: Network Configuration ---
+# This block is processed during the 'network' stage, BEFORE the 125s timeout.
+# This configures eth0 to get an IP via DHCP immediately on boot.
+network:
+  version: 1
+  config:
+  - type: physical
+    name: eth0
+    subnets:
+    - type: dhcp
 
-# This block will be empty, we are doing it in runcmd
-packages: []
+# --- v16 Change: Use Cloud-Init's Package Manager ---
+# This is the proper way to install packages.
+# It runs *after* the network is confirmed online.
+package_update: true
+package_upgrade: true
+packages:
+  - base-devel
+  - git
+  - sudo
+  - hyprland
+  - alacritty
+  - kitty
+  - neovim
+  - nodejs
+  - npm
+  - python
+  - python-pip
+  - go
+  - docker
+  - docker-compose
+  - firefox
+  - chromium
+  - thunderbird
+  - onlyoffice-bin
+  - notepadqq
+  - samba
 
-# This block is empty, we are doing it in runcmd
-package_update: false
-
+# --- vf16 Change: Cleaned up runcmd ---
+# This now *only* runs system commands *after* packages are installed.
 runcmd:
-  # --- 1. Manually start the network ---
-  - [ systemctl, daemon-reload ]
-  - [ systemctl, enable, systemd-networkd ]
-  - [ systemctl, restart, systemd-networkd ]
-  
-  # --- 2. Wait for the network to actually be online ---
-  # This will wait up to 60 seconds for an IP.
-  - |
-    timeout 60 bash -c 'until ip addr show eth0 | grep "inet "; do sleep 1; done'
-
-  # --- 3. Manually update and install packages ---
+  # 1. Init pacman keys (just in case, though packages should be done)
   - [ pacman-key, --init ]
   - [ pacman-key, --populate ]
-  - [ pacman, -Syu, --noconfirm ]
-  - [ pacman, -S, --noconfirm, base, base-devel, git, sudo, hyprland, alacritty, kitty, neovim, nodejs, npm, python, python-pip, go, docker, docker-compose, firefox, chromium, thunderbird, onlyoffice-bin, notepadqq, samba ]
-
-  # --- 4. Run all the other setup commands ---
+  
+  # 2. Enable and start services
   - [ systemctl, enable, docker ]
+  - [ systemd-tmpfiles, --create, docker.conf ] # Fix for Docker on Arch
   - [ systemctl, start, docker ]
   - [ systemctl, enable, smb ]
   - [ systemctl, enable, nmb ]
   - [ systemctl, start, smb ]
   - [ systemctl, start, nmb ]
+  
+  # 3. Clone crush and install
   - git clone https://github.com/charmbracelet/crush.git /opt/crush
   - cd /opt/crush && make install
+  
+  # 4. Set up autologin to Hyprland
   - mkdir -p /etc/systemd/system/getty@tty1.service.d
   - |
     cat > /etc/systemd/system/getty@tty1.service.d/override.conf << EOL
@@ -106,6 +124,8 @@ runcmd:
     ExecStart=-/sbin/agetty --autologin ${USERNAME} --noclear %I \$TERM
     EOL
   - systemctl daemon-reload
+  
+  # 5. Set up .bash_profile to auto-start Hyprland
   - |
     echo '
     if [ -z "\$DISPLAY" ] && [ "\$(tty)" = "/dev/tty1" ]; then
@@ -117,7 +137,7 @@ EOF
 # --- Conditionally add the SSH key ---
 if [ -n "$PUB_KEY" ]; then
     log "Adding provided public SSH key..."
-    sed -i "/^  shell: \/bin\/bash/a\  ssh_authorized_keys:\n    - ${PUB_KEY}" $SNIPPET_PATH
+    sed -i "/^ssh_pwauth: true/a\  ssh_authorized_keys:\n    - ${PUB_KEY}" $SNIPPET_PATH
 else
     log "No SSH key provided. Skipping."
 fi
@@ -151,11 +171,11 @@ log "Attaching imported disk with performance options..."
 qm set $VMID --scsi0 $STORAGE:vm-$VMID-disk-0,cache=$DISK_CACHE,discard=on,ssd=1,queues=$CPU_CORES
 qm set $VMID --boot order=scsi0
 
-log "AttAching Cloud-Init drive..."
+log "Attaching Cloud-Init drive..."
 qm set $VMID --ide2 $STORAGE:cloudinit
 
 log "Setting serial console..."
-qm set $VMID --serial0 socket
+qm set $VMVideoScribe --serial0 socket
 qm set $VMID --cicustom "user=local:snippets/cloud-init-${VM_NAME}.yaml"
 
 log "Setting CI user..."
@@ -168,6 +188,7 @@ log "Starting VM ${VMID}..."
 qm start $VMID
 
 log "--- All Done! ---"
-log "VM is booting. This time, all logic is in 'runcmd'."
-log "This WILL take a long time. Watch with: qm terminal $VMID"
-log "You will see the network start, then a long pause for pacman."
+log "VM is booting. This version (v16) uses a standard 'network:' block."
+log "The 125s network timeout should be GONE."
+log "Watch with: qm terminal $VMID"
+log "You should see it connect, then pause for a long time on 'Cloud-init: ... modules:config' as it runs pacman."
