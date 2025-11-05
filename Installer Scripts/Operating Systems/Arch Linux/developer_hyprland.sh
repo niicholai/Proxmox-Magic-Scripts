@@ -120,8 +120,10 @@ log "Destroying old VM ${VMID} (if exists)..."
 qm destroy $VMID --purge || true
 
 log "Creating VM ${VMID} (${VM_NAME})..."
+# --- FIX: Correct syntax for iothread ---
 qm create $VMID --name $VM_NAME --memory $RAM_MB --cores $CPU_CORES \
-    --net0 virtio,bridge=$BRIDGE --ostype l26 --onboot 1 --scsihw virtio-scsi-pci,iothread=1
+    --net0 virtio,bridge=$BRIDGE --ostype l26 --onboot 1 \
+    --scsihw virtio-scsi-pci --iothread 1
 
 log "Setting CPU type to 'host'..."
 qm set $VMID --cpu host
@@ -143,7 +145,7 @@ log "Attaching imported disk with performance options..."
 qm set $VMID --scsi0 $STORAGE:vm-$VMID-disk-0,cache=$DISK_CACHE,discard=on,ssd=1
 qm set $VMID --boot order=scsi0
 
-log "Attaching Cloud-Init drive..."
+log "AttBaching Cloud-Init drive..."
 qm set $VMID --ide2 $STORAGE:cloudinit
 
 log "Setting serial console..."
