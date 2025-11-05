@@ -48,8 +48,6 @@ cat > $SNIPPET_PATH << EOF
 #cloud-config
 
 # --- User Configuration ---
-# v18: REMOVED the invalid 'network:' block.
-# Networking will be handled by Proxmox via '--ipconfig0'
 user:
   name: ${USERNAME}
   passwd: "${PASSWORD}"
@@ -59,39 +57,20 @@ user:
   shell: /bin/bash
 ssh_pwauth: true
 
-# --- Package Management ---
-# This is also a critical fix. We are now using
-# the proper 'packages' module, which Cloud-Init
-# is designed to run *after* the network is online.
-package_update: true
-package_upgrade: true
-packages:
-  - base-devel
-  - git
-  - sudo
-  - hyprland
-  - alacritty
-  - kitty
-  - neovim
-  - nodejs
-  - npm
-  - python
-  - python-pip
-  - go
-  - docker
-  - docker-compose
-  - firefox
-  - chromium
-  - thunderbird
-  - onlyoffice-bin
-  - notepadqq
-  - samba
+# --- v19: Removed invalid 'packages:' modules ---
+# We are moving all package logic to 'runcmd', as the Arch
+# image's Cloud-Init does not seem to support the 'packages' module.
+# The network WILL be online (from v18's fix) before 'runcmd' runs.
 
 # --- Post-Install Commands ---
 runcmd:
-  # 1. Init pacman keys (just in case)
+  # 1. Init pacman keys and install packages
   - [ pacman-key, --init ]
   - [ pacman-key, --populate ]
+  - [ pacman, -Syu, --noconfirm ]
+  - [ pacman, -S, --noconfirm, base-devel, git, sudo, hyprland, alacritty, kitty, neovim, nodejs, npm, python, python-pip, go, docker, docker-compose, firefox, chromium, thunderbird, notepadqq, samba ]
+  # 'onlyoffice-bin' is an AUR package and must be installed manually,
+  # so it has been removed from the pacman command.
   
   # 2. Enable and start services
   - [ systemctl, enable, docker ]
@@ -165,7 +144,7 @@ qm set $VMID --boot order=scsi0
 log "Attaching Cloud-Init drive..."
 qm set $VMID --ide2 $STORAGE:cloudinit
 
-# --- v18: This is the fix ---
+# --- THIS IS THE FIX (from v18) ---
 log "Setting Cloud-Init networking (via Proxmox)..."
 qm set $VMID --ipconfig0 ip=dhcp
 
@@ -183,7 +162,7 @@ log "Starting VM ${VMID}..."
 qm start $VMID
 
 log "--- All Done! ---"
-log "VM is booting. This version (v18) uses '--ipconfig0' to handle networking."
-log "The 125s timeout and schema validation errors should be GONE."
+log "VM is booting. This version (v19) uses '--ipconfig0' for network AND a 'runcmd'-only config."
+log "The schema validation warning should be GONE."
 log "Watch with: qm terminal $VMID"
-log "You should see it boot quickly, then pause for a long time on 'Cloud-init: ... modules:config' as pacman runs."
+log "You should see a long pause on 'Cloud-init: ... modules:config' as 'runcmd' runs 'pacman'."
