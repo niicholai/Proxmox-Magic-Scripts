@@ -119,7 +119,6 @@ log "Destroying old VM ${VMID} (if exists)..."
 qm destroy $VMID --purge || true
 
 log "Creating VM ${VMID} (${VM_NAME})..."
-# --- FIX: Set controller to virtio-scsi-pci. (NO iothread here) ---
 qm create $VMID --name $VM_NAME --memory $RAM_MB --cores $CPU_CORES \
     --net0 virtio,bridge=$BRIDGE --ostype l26 --onboot 1 \
     --scsihw virtio-scsi-pci
@@ -141,7 +140,6 @@ rm "$IMAGE_FILE"
 log "Removed $IMAGE_FILE."
 
 log "Attaching imported disk with performance options..."
-# --- FIX: Use 'queues=$CPU_CORES' instead of 'iothread=1' ---
 qm set $VMID --scsi0 $STORAGE:vm-$VMID-disk-0,cache=$DISK_CACHE,discard=on,ssd=1,queues=$CPU_CORES
 qm set $VMID --boot order=scsi0
 
@@ -159,7 +157,7 @@ log "Resizing disk..."
 qm resize $VMID scsi0 ${DISK_SIZE}
 
 log "Starting VM ${VMID}..."
-qm start $VMVIM
+qm start $VMID
 
 log "--- All Done! ---"
 log "VM is booting. Cloud-Init will now take over inside the VM."
