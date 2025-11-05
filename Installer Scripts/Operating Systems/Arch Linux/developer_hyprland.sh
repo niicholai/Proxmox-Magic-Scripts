@@ -57,35 +57,12 @@ user:
   shell: /bin/bash
 ssh_pwauth: true
 
-# --- v19: Removed invalid 'packages:' modules ---
-# We are moving all package logic to 'runcmd', as the Arch
-# image's Cloud-Init does not seem to support the 'packages' module.
-# The network WILL be online (from v18's fix) before 'runcmd' runs.
-
-# --- Post-Install Commands ---
 runcmd:
-  # 1. Init pacman keys and install packages
+  # 1. Init pacman keys (still a good idea)
   - [ pacman-key, --init ]
   - [ pacman-key, --populate ]
-  - [ pacman, -Syu, --noconfirm ]
-  - [ pacman, -S, --noconfirm, base-devel, git, sudo, hyprland, alacritty, kitty, neovim, nodejs, npm, python, python-pip, go, docker, docker-compose, firefox, chromium, thunderbird, notepadqq, samba ]
-  # 'onlyoffice-bin' is an AUR package and must be installed manually,
-  # so it has been removed from the pacman command.
-  
-  # 2. Enable and start services
-  - [ systemctl, enable, docker ]
-  - [ systemd-tmpfiles, --create, docker.conf ] # Fix for Docker on Arch
-  - [ systemctl, start, docker ]
-  - [ systemctl, enable, smb ]
-  - [ systemctl, enable, nmb ]
-  - [ systemctl, start, smb ]
-  - [ systemctl, start, nmb ]
-  
-  # 3. Clone crush and install
-  - git clone https://github.com/charmbracelet/crush.git /opt/crush
-  - cd /opt/crush && make install
-  
-  # 4. Set up autologin to Hyprland
+
+  # 2. Set up autologin to Hyprland
   - mkdir -p /etc/systemd/system/getty@tty1.service.d
   - |
     cat > /etc/systemd/system/getty@tty1.service.d/override.conf << EOL
@@ -95,7 +72,7 @@ runcmd:
     EOL
   - systemctl daemon-reload
   
-  # 5. Set up .bash_profile to auto-start Hyprland
+  # 3. Set up .bash_profile to auto-start Hyprland
   - |
     echo '
     if [ -z "\$DISPLAY" ] && [ "\$(tty)" = "/dev/tty1" ]; then
@@ -144,7 +121,6 @@ qm set $VMID --boot order=scsi0
 log "Attaching Cloud-Init drive..."
 qm set $VMID --ide2 $STORAGE:cloudinit
 
-# --- THIS IS THE FIX (from v18) ---
 log "Setting Cloud-Init networking (via Proxmox)..."
 qm set $VMID --ipconfig0 ip=dhcp
 
@@ -162,7 +138,14 @@ log "Starting VM ${VMID}..."
 qm start $VMID
 
 log "--- All Done! ---"
-log "VM is booting. This version (v19) uses '--ipconfig0' for network AND a 'runcmd'-only config."
-log "The schema validation warning should be GONE."
-log "Watch with: qm terminal $VMID"
-log "You should see a long pause on 'Cloud-init: ... modules:config' as 'runcmd' runs 'pacman'."
+log "VM ${VMID} is provisioned and booting. This will be fast."
+log "Network and SSH are configured. Package installation is NOT."
+log ""
+log "--- YOUR NEXT STEP ---"
+log "1. Wait 60 seconds for the VM to boot."
+log "2. Find the VM's IP in the Proxmox summary (or your DHCP server)."
+log "3. SSH in: ssh ${USERNAME}@[VM_IP_ADDRESS]"
+log "4. Once inside, run the package installation command manually:"
+log ""
+log "sudo pacman -Syu --noconfirm && sudo pacman -S --noconfirm base-devel git sudo hyprland alacritty kitty neovim nodejs npm python python-pip go docker docker-compose firefox chromium thunderbird notepadqq samba && sudo systemctl enable --now docker smb nmb"
+log ""
