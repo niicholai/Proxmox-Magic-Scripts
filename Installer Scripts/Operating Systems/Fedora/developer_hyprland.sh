@@ -46,7 +46,7 @@ log "Creating Cloud-Init config snippet..."
 mkdir -p $SNIPPETS_DIR
 SNIPPET_PATH="${SNIPPETS_DIR}/cloud-init-${VM_NAME}.yaml"
 
-# --- v1-Fedora: A clean, standard Cloud-Init file ---
+# --- v2-Fedora: Fixed Hyprland autologin with proper Wayland environment ---
 cat > $SNIPPET_PATH << EOF
 #cloud-config
 fqdn: ${VM_NAME}
@@ -77,12 +77,14 @@ runcmd:
   
   # --- 3. Install Dev Tools & Apps ---
   - [ dnf, groupinstall, -y, "Development Tools" ]
-  - [ dnf, install, -y, hyprland, alacritty, kitty, neovim, nodejs, npm, python3, python3-pip, golang, docker, docker-compose, firefox, chromium, thunderbird, samba ]
+  - [ dnf, install, -y, hyprland, waybar, wofi, seatd, polkit, xdg-desktop-portal-wlr, alacritty, kitty, neovim, nodejs, npm, python3, python3-pip, golang, docker, docker-compose, firefox, chromium, thunderbird, samba ]
   
   # --- 4. Enable Services ---
   - [ systemctl, enable, docker ]
   - [ systemctl, enable, smb ]
   - [ systemctl, enable, nmb ]
+  - [ systemctl, enable, seatd ]
+  - [ usermod, -aG, seat, ${USERNAME} ]
   
   # --- 5. Autologin & Hyprland Start ---
   - [ mkdir, -p, /etc/systemd/system/getty@tty1.service.d ]
@@ -90,8 +92,9 @@ runcmd:
   - [ sh, -c, "echo 'ExecStart=' >> /etc/systemd/system/getty@tty1.service.d/override.conf" ]
   - [ sh, -c, "echo 'ExecStart=-/sbin/agetty --autologin ${USERNAME} --noclear %I \$TERM' >> /etc/systemd/system/getty@tty1.service.d/override.conf" ]
   - [ systemctl, daemon-reload ]
-  - [ sh, -c, "echo 'if [ -z \"\$DISPLAY\" ] && [ \"\$(tty)\" = \"/dev/tty1\" ]; then exec Hyprland; fi' >> /home/${USERNAME}/.bash_profile" ]
+  - [ sh, -c, "cat >> /home/${USERNAME}/.bash_profile << 'EOFPROFILE'\n# Auto-start Hyprland on tty1\nif [ -z \"$DISPLAY\" ] && [ \"$(tty)\" = \"/dev/tty1\" ]; then\n  export XDG_RUNTIME_DIR=/run/user/$(id -u)\n  export XDG_SESSION_TYPE=wayland\n  export XDG_SESSION_DESKTOP=Hyprland\n  export XDG_CURRENT_DESKTOP=Hyprland\n  export QT_QPA_PLATFORM=wayland\n  export GDK_BACKEND=wayland\n  export MOZ_ENABLE_WAYLAND=1\n  exec Hyprland\nfi\nEOFPROFILE\n" ]
   - [ chown, "${USERNAME}:${USERNAME}", /home/${USERNAME}/.bash_profile ]
+  - [ chmod, "644", /home/${USERNAME}/.bash_profile ]
 EOF
 
 # --- 4. Create and Configure VM ---
@@ -143,6 +146,7 @@ log "Starting VM ${VMID}..."
 qm start $VMID
 
 log "--- All Done! ---"
-log "VM ${VMID} is booting. This is v1-Fedora."
+log "VM ${VMID} is booting. This is v2-Fedora with Hyprland fixes."
 log "Fedora's 'dnf update' can be slow. Give this 15-20 minutes."
+log "After boot, the VM should auto-login and start Hyprland on tty1."
 log "Watch with: qm terminal $VMID"
