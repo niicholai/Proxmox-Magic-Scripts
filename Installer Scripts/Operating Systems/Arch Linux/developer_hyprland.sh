@@ -46,6 +46,7 @@ log "Creating Cloud-Init config snippet..."
 mkdir -p $SNIPPETS_DIR
 SNIPPET_PATH="${SNIPPETS_DIR}/cloud-init-${VM_NAME}.yaml"
 
+# --- v37: The v35 "schema validation" fix ---
 cat > $SNIPPET_PATH << EOF
 #cloud-config
 fqdn: ${VM_NAME}
@@ -55,11 +56,11 @@ ssh_pwauth: false
 users:
   - name: root
     groups: docker
-    # v35 Fix: Use robust awk command, not grep|xargs
+    # v37 FIX: Use 5 spaces to match "Rosetta" script, not 6
     ssh_authorized_keys:
-$(awk '/^ssh/ {printf "      - %s\n", $0}' "${SSH_KEYS_FILE}")
+$(awk '/^ssh/ {printf "     - %s\n", $0}' "${SSH_KEYS_FILE}")
 
-# v35 Fix: Use BARE STRINGS for runcmd (reliable method)
+# v35: Use BARE STRINGS for runcmd (reliable method)
 runcmd:
   # --- 1. v35 FIX: Resize the filesystem *before* installing packages ---
   - pacman -Syu --noconfirm --needed cloud-utils-growpart e2fsprogs
@@ -155,5 +156,6 @@ log "Starting VM ${VMID}..."
 qm start $VMID
 
 log "--- All Done! ---"
-log "VM ${VMID} is booting. This is v35."
+log "VM ${VMID} is booting. This is v37."
+log "It fixes the schema validation error from v35."
 log "Watch with: qm terminal $VMID"
