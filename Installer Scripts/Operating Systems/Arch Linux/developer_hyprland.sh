@@ -43,7 +43,7 @@ fi
 log "Creating Cloud-Init config snippet..."
 SNIPPET_PATH="/var/lib/vz/snippets/cloud-init-${VM_NAME}.yaml"
 
-# --- v29: Build the YAML file (Mimicking the "Rosetta Stone" syntax) ---
+# --- Build the YAML file ---
 cat > $SNIPPET_PATH << EOF
 #cloud-config
 fqdn: ${VM_NAME}
@@ -58,7 +58,6 @@ users:
     ssh_authorized_keys:
 $(cat ${SSH_KEYS_FILE} | grep -E "^ssh" | xargs -iXX echo "      - XX")
 
-# v29 FIX: Use the "list of strings" format for runcmd, not "list of lists"
 runcmd:
   - "rm -rf /etc/pacman.d/gnupg"
   - "pacman-key --init"
