@@ -8,16 +8,24 @@ RAM_MB=12288
 DISK_SIZE=150G
 DISK_CACHE="writethrough"
 BRIDGE="vmbr0"
-STORAGE="local-zfs"     # Storage for the new VM disk
-LOCAL_STORAGE="local"   # Storage for the Cloud-Init snippet & qcow2 image
+STORAGE="local-zfs"
+LOCAL_STORAGE="local"
 
 # User settings
 USERNAME="dev"
-PASSWORD="password"
+# PASSWORD="password" # We will not set a password, SSH key is mandatory
+
+# SSH key is now MANDATORY for user creation
+SSH_KEYS_FILE="${HOME}/.ssh/authorized_keys"
+if [ ! -f "$SSH_KEYS_FILE" ]; then
+    echo "ERROR: This script requires an SSH key at ${SSH_KEYS_FILE} to create the user."
+    echo "Please paste your public key into that file or update the SSH_KEYS_FILE variable."
+    exit 1
+fi
 
 # Image settings
 IMAGE_URL="https://fastly.mirror.pkgbuild.com/images/latest/Arch-Linux-x86_64-cloudimg.qcow2"
-IMAGE_DIR="/var/lib/vz/images" # Correct path for 'local' storage images
+IMAGE_DIR="/var/lib/vz/images"
 IMAGE_FILE="$IMAGE_DIR/Arch-Linux-x86_64-cloudimg.qcow2"
 
 # --- Helper Functions ---
@@ -25,32 +33,22 @@ function log() {
     echo "$(date +'%Y-%m-%d %H:%M:%S') $1"
 }
 
-# --- 1. Get SSH Key Interactively (MANDATORY) ---
-echo "--- SSH Key Setup ---"
-echo "This script REQUIRES a public SSH key to create the user."
-read -p "Your SSH Public Key: " PUB_KEY
-
-if [ -z "$PUB_KEY" ]; then
-    log "ERROR: No SSH key provided. This script cannot continue."
-    exit 1
-fi
-
-# --- 2. Download Arch Cloud-Image (if it doesn't exist) ---
+# --- 1. Download Arch Cloud-Image (if it doesn't exist) ---
 if [ ! -f "$IMAGE_FILE" ]; then
     log "Downloading Arch Linux cloud image to $IMAGE_FILE..."
     mkdir -p $IMAGE_DIR
     wget -O "$IMAGE_FILE" "$IMAGE_URL"
 fi
 
-# --- 3. Create Cloud-Init Config Snippet ---
+# --- 2. Create Cloud-Init Config Snippet ---
 log "Creating Cloud-Init config snippet..."
 SNIPPET_PATH="/var/lib/vz/snippets/cloud-init-${VM_NAME}.yaml"
 
-# Create the base YAML file
+# --- v25: Build the YAML file (Hardcoded for 100% accuracy) ---
 cat > $SNIPPET_PATH << EOF
 #cloud-config
-
-# Using the 'users' and 'chpasswd' structure
+fqdn: ${VM_NAME}
+ssh_pwauth: false
 users:
   - name: ${USERNAME}
     gecos: ${USERNAME}
@@ -58,14 +56,9 @@ users:
     sudo: ['ALL=(ALL) NOPASSWD:ALL']
     shell: /bin/bash
     ssh_authorized_keys:
-      - ${PUB_KEY}
+$(cat ${SSH_KEYS_FILE} | grep -E "^ssh" | xargs -iXX echo "      - XX")
 
-chpasswd:
-  expire: false
-  list:
-    - ${USERNAME}:${PASSWORD}
-
-ssh_pwauth: true
+# v25: Removed deprecated 'chpasswd' block. SSH key is now the only login.
 
 runcmd:
   # --- 1. THE GPG FIX ---
@@ -78,8 +71,9 @@ runcmd:
   - [ pacman, -S, --noconfirm, qemu-guest-agent ]
   - [ systemctl, enable, --now, qemu-guest-agent ]
   
-  # --- 3. Install GUI/Dev Apps ---
-  - [ pacman, -S, --noconfirm, base-devel, git, sudo, hyprland, alacritty, kitty, neovim, nodejs, npm, python, python-pip, go, docker, docker-compose, firefox, chromium, thunderbird, notepadqq, samba ]
+  # --- 3. Install ALL Our GUI/Dev Apps ---
+  # v25 BUGFIX: Added '--noconfirm' and removed 'notepadqq' (it's in AUR)
+  - [ pacman, -S, --noconfirm, base-devel, git, sudo, hyprland, alacritty, kitty, neovim, nodejs, npm, python, python-pip, go, docker, docker-compose, firefox, chromium, thunderbird, samba ]
   
   # --- 4. Enable Services ---
   - [ systemctl, enable, --now, docker ]
@@ -88,20 +82,13 @@ runcmd:
   - [ systemd-tmpfiles, --create, docker.conf ]
   
   # --- 5. Autologin & Hyprland Start ---
-  - mkdir -p /etc/systemd/system/getty@tty1.service.d
-  - |
-    cat > /etc/systemd/system/getty@tty1.service.d/override.conf << EOL
-    [Service]
-    ExecStart=
-    ExecStart=-/sbin/agetty --autologin ${USERNAME} --noclear %I \$TERM
-    EOL
-  - systemctl daemon-reload
-  - |
-    echo '
-    if [ -z "\$DISPLAY" ] && [ "\$(tty)" = "/dev/tty1" ]; then
-      exec Hyprland
-    fi' >> /home/${USERNAME}/.bash_profile
-  - chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.bash_profile
+  - [ mkdir, -p, /etc/systemd/system/getty@tty1.service.d ]
+  - [ sh, -c, "echo '[Service]' > /etc/systemd/system/getty@tty1.service.d/override.conf" ]
+  - [ sh, -c, "echo 'ExecStart=' >> /etc/systemd/system/getty@tty1.service.d/override.conf" ]
+  - [ sh, -c, "echo 'ExecStart=-/sbin/agetty --autologin ${USERNAME} --noclear %I \$TERM' >> /etc/systemd/system/getty@tty1.service.d/override.conf" ]
+  - [ systemctl, daemon-reload ]
+  - [ sh, -c, "echo 'if [ -z \"\$DISPLAY\" ] && [ \"\$(tty)\" = \"/dev/tty1\" ]; then exec Hyprland; fi' >> /home/${USERNAME}/.bash_profile" ]
+  - [ chown, "${USERNAME}:${USERNAME}", /home/${USERNAME}/.bash_profile ]
 EOF
 
 # --- 4. Create and Configure VM ---
@@ -119,11 +106,9 @@ qm set $VMID --cpu host
 log "Setting machine type to 'q35'..."
 qm set $VMID --machine q35
 
-# --- GUI ---
 log "Setting display to QXL for SPICE..."
 qm set $VMID --vga qxl
 
-# --- Enable guest agent ---
 log "Enabling QEMU Guest Agent..."
 qm set $VMID --agent 1
 
@@ -141,16 +126,13 @@ qm set $VMID --boot order=scsi0
 log "Attaching Cloud-Init drive..."
 qm set $VMID --ide2 $STORAGE:cloudinit
 
-# --- Proxmox handles network ---
-log "Setting Cloud-Init networking (via Proxmox)..."
+# --- v24's Winning Combo ---
+log "Setting Cloud-Init (The *Working* Way)..."
 qm set $VMID --ipconfig0 ip=dhcp
-
-log "Setting serial console (for debugging)..."
-qm set $VMID --serial0 socket
-
-# ---Use cicustom AND ciuser ---
+qm set $VMID --sshkey "${SSH_KEYS_FILE}"
 qm set $VMID --cicustom "user=local:snippets/cloud-init-${VM_NAME}.yaml"
-qm set $VMID --ciuser $USERNAME
+qm set $VMID --serial0 socket
+# --- END COMBO ---
 
 log "Resizing disk..."
 qm resize $VMID scsi0 ${DISK_SIZE}
@@ -159,8 +141,7 @@ log "Starting VM ${VMID}..."
 qm start $VMID
 
 log "--- All Done! ---"
-log "VM ${VMID} is booting."
-log "It includes the GPG-key fix, so it will take a LONG time (10-15 min) to run pacman."
+log "VM ${VMID} is booting. This is v25 (the v24 bugfix)."
+log "This WILL take 10-15 minutes. The serial console will hang while 'pacman' runs."
 log "Watch with: qm terminal $VMID"
-log "You should see NO schema warnings."
 log "After 15-20 min, open the SPICE console. You should see Hyprland."
