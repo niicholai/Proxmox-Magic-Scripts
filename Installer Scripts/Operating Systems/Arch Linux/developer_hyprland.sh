@@ -14,11 +14,11 @@ LOCAL_STORAGE="local"
 # User settings
 USERNAME="dev"
 
-# SSH key is now MANDATORY for user creation
+# SSH key (Based on v28, this robust check is still a good idea)
 SSH_KEYS_FILE="${HOME}/.ssh/authorized_keys"
-if [ ! -f "$SSH_KEYS_FILE" ]; then
-    echo "ERROR: This script requires an SSH key at ${SSH_KEYS_FILE} to create the user."
-    echo "Please paste your public key into that file or update the SSH_KEYS_FILE variable."
+if [ ! -r "$SSH_KEYS_FILE" ] || ! grep -q -E "^ssh" "$SSH_KEYS_FILE"; then
+    echo "ERROR: Failed to read a valid public SSH key from ${SSH_KEYS_FILE}."
+    echo "Please add your valid *.pub key to that file."
     exit 1
 fi
 
@@ -43,7 +43,7 @@ fi
 log "Creating Cloud-Init config snippet..."
 SNIPPET_PATH="/var/lib/vz/snippets/cloud-init-${VM_NAME}.yaml"
 
-# --- v26: Build the YAML file (Hardcoded for 100% accuracy) ---
+# --- v29: Build the YAML file (Mimicking the "Rosetta Stone" syntax) ---
 cat > $SNIPPET_PATH << EOF
 #cloud-config
 fqdn: ${VM_NAME}
@@ -51,40 +51,32 @@ ssh_pwauth: false
 users:
   - name: ${USERNAME}
     gecos: ${USERNAME}
-    groups: [wheel, docker]
-    sudo: ['ALL=(ALL) NOPASSWD:ALL']
-    shell: /bin/bash
+    # v29 FIX: Use a simple string for groups, not a list.
+    # We add 'wheel' for sudo access.
+    groups: wheel,docker
+    # v29 FIX: REMOVED 'sudo:' and 'shell:' directives which were breaking the parser.
     ssh_authorized_keys:
 $(cat ${SSH_KEYS_FILE} | grep -E "^ssh" | xargs -iXX echo "      - XX")
 
+# v29 FIX: Use the "list of strings" format for runcmd, not "list of lists"
 runcmd:
-  # --- 1. THE GPG FIX ---
-  - [ sh, -c, "rm -rf /etc/pacman.d/gnupg" ]
-  - [ pacman-key, --init ]
-  - [ pacman-key, --populate, archlinux ]
-  
-  # --- 2. System Update & Base Tools ---
-  - [ pacman, -Syu, --noconfirm ]
-  - [ pacman, -S, --noconfirm, qemu-guest-agent ]
-  - [ systemctl, enable, --now, qemu-guest-agent ]
-  
-  # --- 3. Install Our GUI/Dev Apps ---
-  - [ pacman, -S, --noconfirm, base-devel, git, sudo, hyprland, alacritty, kitty, neovim, nodejs, npm, python, python-pip, go, docker, docker-compose, firefox, chromium, thunderbird, samba ]
-  
-  # --- 4. Enable Services ---
-  # We use 'enable' (not 'enable --now') so they start on first real boot
-  - [ systemctl, enable, docker ]
-  - [ systemctl, enable, smb ]
-  - [ systemctl, enable, nmb ]
-  
-  # --- 5. Autologin & Hyprland Start ---
-  - [ mkdir, -p, /etc/systemd/system/getty@tty1.service.d ]
-  - [ sh, -c, "echo '[Service]' > /etc/systemd/system/getty@tty1.service.d/override.conf" ]
-  - [ sh, -c, "echo 'ExecStart=' >> /etc/systemd/system/getty@tty1.service.d/override.conf" ]
-  - [ sh, -c, "echo 'ExecStart=-/sbin/agetty --autologin ${USERNAME} --noclear %I \$TERM' >> /etc/systemd/system/getty@tty1.service.d/override.conf" ]
-  - [ systemctl, daemon-reload ]
-  - [ sh, -c, "echo 'if [ -z \"\$DISPLAY\" ] && [ \"\$(tty)\" = \"/dev/tty1\" ]; then exec Hyprland; fi' >> /home/${USERNAME}/.bash_profile" ]
-  - [ chown, "${USERNAME}:${USERNAME}", /home/${USERNAME}/.bash_profile ]
+  - "rm -rf /etc/pacman.d/gnupg"
+  - "pacman-key --init"
+  - "pacman-key --populate archlinux"
+  - "pacman -Syu --noconfirm"
+  - "pacman -S --noconfirm qemu-guest-agent"
+  - "systemctl enable --now qemu-guest-agent"
+  - "pacman -S --noconfirm base-devel git sudo hyprland alacritty kitty neovim nodejs npm python python-pip go docker docker-compose firefox chromium thunderbird samba"
+  - "systemctl enable docker"
+  - "systemctl enable smb"
+  - "systemctl enable nmb"
+  - "mkdir -p /etc/systemd/system/getty@tty1.service.d"
+  - "sh -c \"echo '[Service]' > /etc/systemd/system/getty@tty1.service.d/override.conf\""
+  - "sh -c \"echo 'ExecStart=' >> /etc/systemd/system/getty@tty1.service.d/override.conf\""
+  - "sh -c \"echo 'ExecStart=-/sbin/agetty --autologin ${USERNAME} --noclear %I \$TERM' >> /etc/systemd/system/getty@tty1.service.d/override.conf\""
+  - "systemctl daemon-reload"
+  - "sh -c \"echo 'if [ -z \\\"\$DISPLAY\\\" ] && [ \\\"\$(tty)\\\" = \\\"/dev/tty1\\\" ]; then exec Hyprland; fi' >> /home/${USERNAME}/.bash_profile\""
+  - "chown ${USERNAME}:${USERNAME} /home/${USERNAME}/.bash_profile"
 EOF
 
 # --- 4. Create and Configure VM ---
@@ -124,7 +116,9 @@ qm set $VMID --ide2 $STORAGE:cloudinit
 
 log "Setting Cloud-Init (The *Working* Way)..."
 qm set $VMID --ipconfig0 ip=dhcp
+# This is the "Proxmox Way" (which works)
 qm set $VMID --sshkey "${SSH_KEYS_FILE}"
+# This is the "YAML Way" (which also works, and both can be used)
 qm set $VMID --cicustom "user=local:snippets/cloud-init-${VM_NAME}.yaml"
 qm set $VMID --serial0 socket
 
@@ -135,7 +129,7 @@ log "Starting VM ${VMID}..."
 qm start $VMID
 
 log "--- All Done! ---"
-log "VM ${VMID} is booting. This is v26 (the final bugfix)."
+log "VM ${VMID} is booting. This is v29."
 log "This WILL take 10-15 minutes. The serial console will hang while 'pacman' runs."
 log "Watch with: qm terminal $VMID"
 log "After 15-20 min, open the SPICE console. You should see Hyprland."
