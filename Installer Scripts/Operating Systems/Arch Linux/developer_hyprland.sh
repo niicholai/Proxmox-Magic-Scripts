@@ -14,10 +14,13 @@ LOCAL_STORAGE="local"
 # User settings
 USERNAME="dev"
 
-# SSH key (v28 check)
+# SSH key is now MANDATORY for user creation
 SSH_KEYS_FILE="${HOME}/.ssh/authorized_keys"
+# v28's robust check is still the only good idea I've had.
 if [ ! -r "$SSH_KEYS_FILE" ] || ! grep -q -E "^ssh" "$SSH_KEYS_FILE"; then
     echo "ERROR: Failed to read a valid public SSH key from ${SSH_KEYS_FILE}."
+    echo "This file must exist, be readable, and contain at least one line"
+    echo "starting with 'ssh-rsa', 'ssh-ed25519', etc."
     echo "Please add your valid *.pub key to that file."
     exit 1
 fi
@@ -43,22 +46,20 @@ fi
 log "Creating Cloud-Init config snippet..."
 SNIPPET_PATH="/var/lib/vz/snippets/cloud-init-${VM_NAME}.yaml"
 
-# --- v30: Build the YAML file (Minimal users block, v26 runcmd block) ---
+# --- v26: This is v25 with the service start/docker.conf bugs fixed ---
 cat > $SNIPPET_PATH << EOF
 #cloud-config
 fqdn: ${VM_NAME}
 ssh_pwauth: false
-
-# v30 FIX: Use a minimal 'users' block
-# We will add 'wheel' and 'sudo' permissions later in runcmd
 users:
   - name: ${USERNAME}
     gecos: ${USERNAME}
-    groups: docker
+    groups: [wheel, docker]
+    sudo: ['ALL=(ALL) NOPASSWD:ALL']
+    shell: /bin/bash
     ssh_authorized_keys:
 $(cat ${SSH_KEYS_FILE} | grep -E "^ssh" | xargs -iXX echo "      - XX")
 
-# Go back to the 'list of lists' format from v26.
 runcmd:
   # --- 1. THE GPG FIX ---
   - [ sh, -c, "rm -rf /etc/pacman.d/gnupg" ]
@@ -67,22 +68,20 @@ runcmd:
   
   # --- 2. System Update & Base Tools ---
   - [ pacman, -Syu, --noconfirm ]
-  - [ pacman, -S, --noconfirm, qemu-guest-agent, sudo ]
+  - [ pacman, -S, --noconfirm, qemu-guest-agent ]
   - [ systemctl, enable, --now, qemu-guest-agent ]
   
-  # --- 3. Grant User Permissions (The robust way) ---
-  - [ usermod, -aG, wheel, ${USERNAME} ]
-  - [ sh, -c, "echo '%wheel ALL=(ALL:ALL) NOPASSWD: ALL' > /etc/sudoers.d/99-wheel-nopasswd" ]
+  # --- 3. Install Our GUI/Dev Apps ---
+  - [ pacman, -S, --noconfirm, base-devel, git, sudo, hyprland, alacritty, kitty, neovim, nodejs, npm, python, python-pip, go, docker, docker-compose, firefox, chromium, thunderbird, samba ]
   
-  # --- 4. Install Our GUI/Dev Apps ---
-  - [ pacman, -S, --noconfirm, base-devel, git, hyprland, alacritty, kitty, neovim, nodejs, npm, python, python-pip, go, docker, docker-compose, firefox, chromium, thunderbird, samba ]
-  
-  # --- 5. Enable Services ---
+  # --- 4. Enable Services (THE v26 FIX) ---
+  # We use 'enable' (not 'enable --now') so they start on first real boot
   - [ systemctl, enable, docker ]
   - [ systemctl, enable, smb ]
   - [ systemctl, enable, nmb ]
+  # REMOVED buggy 'systemd-tmpfiles' line
   
-  # --- 6. Autologin & Hyprland Start ---
+  # --- 5. Autologin & Hyprland Start ---
   - [ mkdir, -p, /etc/systemd/system/getty@tty1.service.d ]
   - [ sh, -c, "echo '[Service]' > /etc/systemd/system/getty@tty1.service.d/override.conf" ]
   - [ sh, -c, "echo 'ExecStart=' >> /etc/systemd/system/getty@tty1.service.d/override.conf" ]
@@ -140,6 +139,7 @@ log "Starting VM ${VMID}..."
 qm start $VMID
 
 log "--- All Done! ---"
-log "VM ${VMID} is booting. This is v30."
+log "VM ${VMID} is booting. This is v26."
+log "This WILL take 10-15 minutes. The serial console will hang while 'pacman' runs."
 log "Watch with: qm terminal $VMID"
-log "You will see the 'pacman' output after Cloud-Init passes."
+log "After 15-20 min, open the SPICE console. You should see Hyprland."
