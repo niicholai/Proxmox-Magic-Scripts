@@ -46,11 +46,12 @@ log "Creating Cloud-Init config snippet..."
 mkdir -p $SNIPPETS_DIR
 SNIPPET_PATH="${SNIPPETS_DIR}/cloud-init-${VM_NAME}.yaml"
 
-# --- v1-Fedora: A clean, standard Cloud-Init file ---
+# --- v2-Fedora: Add console password access ---
 cat > $SNIPPET_PATH << EOF
 #cloud-config
 fqdn: ${VM_NAME}
-ssh_pwauth: false
+# Setting ssh_pwauth to true is required if a password is supplied below
+ssh_pwauth: true 
 
 # We can create the user directly. This is not Arch.
 users:
@@ -59,8 +60,9 @@ users:
     groups: [wheel, docker] # 'wheel' is the sudo group on Fedora
     sudo: ['ALL=(ALL) NOPASSWD:ALL']
     shell: /bin/bash
+    passwd: password
     ssh_authorized_keys:
-$(awk '/^ssh/ {printf "      - %s\n", $0}' "${SSH_KEYS_FILE}")
+$(awk '/^ssh/ {printf "      - %s\n", $0}' "${SSH_KEYS_FILE}")
 
 # Use the standard 'list of lists' format, which Fedora supports.
 runcmd:
@@ -143,6 +145,6 @@ log "Starting VM ${VMID}..."
 qm start $VMID
 
 log "--- All Done! ---"
-log "VM ${VMID} is booting. This is v1-Fedora."
+log "VM ${VMID} is booting. This is v2-Fedora."
 log "Fedora's 'dnf update' can be slow. Give this 15-20 minutes."
 log "Watch with: qm terminal $VMID"
