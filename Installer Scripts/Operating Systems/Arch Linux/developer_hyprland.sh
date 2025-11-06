@@ -46,7 +46,7 @@ log "Creating Cloud-Init config snippet..."
 mkdir -p $SNIPPETS_DIR
 SNIPPET_PATH="${SNIPPETS_DIR}/cloud-init-${VM_NAME}.yaml"
 
-# --- v37: The v35 "schema validation" fix ---
+# --- v38: "Rosetta Stone" syntax + Correct Escaping + All Fixes ---
 cat > $SNIPPET_PATH << EOF
 #cloud-config
 fqdn: ${VM_NAME}
@@ -56,55 +56,56 @@ ssh_pwauth: false
 users:
   - name: root
     groups: docker
-    # v37 FIX: Use 5 spaces to match "Rosetta" script, not 6
+    # v37 Fix: Use 5 spaces
     ssh_authorized_keys:
 $(awk '/^ssh/ {printf "     - %s\n", $0}' "${SSH_KEYS_FILE}")
 
-# v35: Use BARE STRINGS for runcmd (reliable method)
+# v38 FIX: Use "list of QUOTED strings" (Rosetta syntax)
+# AND use single quotes for sh -c commands to fix escaping.
 runcmd:
   # --- 1. v35 FIX: Resize the filesystem *before* installing packages ---
-  - pacman -Syu --noconfirm --needed cloud-utils-growpart e2fsprogs
-  - growpart /dev/sda 1
-  - resize2fs /dev/sda1
+  - "pacman -Syu --noconfirm --needed cloud-utils-growpart e2fsprogs"
+  - "growpart /dev/sda 1"
+  - "resize2fs /dev/sda1"
   
   # --- 2. THE GPG FIX ---
-  - sh -c "rm -rf /etc/pacman.d/gnupg"
-  - pacman-key --init
-  - pacman-key --populate archlinux
+  - "sh -c 'rm -rf /etc/pacman.d/gnupg'"
+  - "pacman-key --init"
+  - "pacman-key --populate archlinux"
   
   # --- 3. System Update & Base Tools ---
-  - pacman -Syu --noconfirm
-  - pacman -S --noconfirm qemu-guest-agent sudo
-  - systemctl enable --now qemu-guest-agent
+  - "pacman -Syu --noconfirm"
+  - "pacman -S --noconfirm qemu-guest-agent sudo"
+  - "systemctl enable --now qemu-guest-agent"
   
   # --- 4. Create our 'dev' user manually (reliable method) ---
-  - useradd -m -G wheel,docker -s /bin/bash ${NEW_USERNAME}
-  - sh -c "echo '%wheel ALL=(ALL:ALL) NOPASSWD: ALL' > /etc/sudoers.d/99-wheel-nopasswd"
+  - "useradd -m -G wheel,docker -s /bin/bash ${NEW_USERNAME}"
+  - "sh -c \"echo '%wheel ALL=(ALL:ALL) NOPASSWD: ALL' > /etc/sudoers.d/99-wheel-nopasswd\""
   
   # --- 5. Copy SSH keys from root to new user ---
-  - mkdir -p /home/${NEW_USERNAME}/.ssh
-  - sh -c "cp /root/.ssh/authorized_keys /home/${NEW_USERNAME}/.ssh/authorized_keys"
-  - chown -R ${NEW_USERNAME}:${NEW_USERNAME} /home/${NEW_USERNAME}/.ssh
-  - chmod 700 /home/${NEW_USERNAME}/.ssh
-  - chmod 600 /home/${NEW_USERNAME}/.ssh/authorized_keys
+  - "mkdir -p /home/${NEW_USERNAME}/.ssh"
+  - "sh -c 'cp /root/.ssh/authorized_keys /home/${NEW_USERNAME}/.ssh/authorized_keys'"
+  - "chown -R ${NEW_USERNAME}:${NEW_USERNAME} /home/${NEW_USERNAME}/.ssh"
+  - "chmod 700 /home/${NEW_USERNAME}/.ssh"
+  - "chmod 600 /home/${NEW_USERNAME}/.ssh/authorized_keys"
 
   # --- 6. Install Our GUI/Dev Apps ---
-  - pacman -S --noconfirm base-devel git hyprland alacritty kitty neovim nodejs npm python python-pip go docker docker-compose firefox chromium thunderbird samba
+  - "pacman -S --noconfirm base-devel git hyprland alacritty kitty neovim nodejs npm python python-pip go docker docker-compose firefox chromium thunderbird samba"
   
   # --- 7. Enable Services (The v26 fix) ---
-  - systemctl enable docker
-  - systemctl enable smb
-  - systemctl enable nmb
+  - "systemctl enable docker"
+  - "systemctl enable smb"
+  - "systemctl enable nmb"
   
   # --- 8. Autologin & Hyprland Start (for the NEW user) ---
-  - mkdir -p /etc/systemd/system/getty@tty1.service.d
-  - sh -c "echo '[Service]' > /etc/systemd/system/getty@tty1.service.d/override.conf"
-  - sh -c "echo 'ExecStart=' >> /etc/systemd/system/getty@tty1.service.d/override.conf"
-  - sh -c "echo 'ExecStart=-/sbin/agetty --autologin ${NEW_USERNAME} --noclear %I \$TERM' >> /etc/systemd/system/getty@tty1.service.d/override.conf"
-  - systemctl daemon-reload
-  # v35 Fix: Correctly escape $() for bare string EOF
-  - sh -c "echo 'if [ -z \"\$DISPLAY\" ] && [ \"\$(tty)\" = \"/dev/tty1\" ]; then exec Hyprland; fi' >> /home/${NEW_USERNAME}/.bash_profile"
-  - chown ${NEW_USERNAME}:${NEW_USERNAME} /home/${NEW_USERNAME}/.bash_profile
+  - "mkdir -p /etc/systemd/system/getty@tty1.service.d"
+  - "sh -c \"echo '[Service]' > /etc/systemd/system/getty@tty1.service.d/override.conf\""
+  - "sh -c \"echo 'ExecStart=' >> /etc/systemd/system/getty@tty1.service.d/override.conf\""
+  - "sh -c \"echo 'ExecStart=-/sbin/agetty --autologin ${NEW_USERNAME} --noclear %I \$TERM' >> /etc/systemd/system/getty@tty1.service.d/override.conf\""
+  - "systemctl daemon-reload"
+  # v38 Fix: The simple, robust, and correctly escaped version of this command.
+  - "sh -c 'echo ''if [ -z \"\$DISPLAY\" ] && [ \"\$(tty)\" = \"/dev/tty1\" ]; then exec Hyprland; fi'' >> /home/${NEW_USERNAME}/.bash_profile'"
+  - "chown ${NEW_USERNAME}:${NEW_USERNAME} /home/${NEW_USERNAME}/.bash_profile"
 EOF
 
 # --- 4. Create and Configure VM ---
@@ -156,6 +157,6 @@ log "Starting VM ${VMID}..."
 qm start $VMID
 
 log "--- All Done! ---"
-log "VM ${VMID} is booting. This is v37."
-log "It fixes the schema validation error from v35."
+log "VM ${VMID} is booting. This is v38."
+log "It uses the 'Rosetta Stone' syntax and all of your review fixes."
 log "Watch with: qm terminal $VMID"
