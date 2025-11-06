@@ -68,7 +68,7 @@ runcmd:
   - [ pacman, -S, --noconfirm, qemu-guest-agent ]
   - [ systemctl, enable, --now, qemu-guest-agent ]
   
-  # --- 3. Install ALL Our GUI/Dev Apps ---
+  # --- 3. Install Our GUI/Dev Apps ---
   - [ pacman, -S, --noconfirm, base-devel, git, sudo, hyprland, alacritty, kitty, neovim, nodejs, npm, python, python-pip, go, docker, docker-compose, firefox, chromium, thunderbird, samba ]
   
   # --- 4. Enable Services ---
@@ -122,7 +122,20 @@ qm set $VMID --boot order=scsi0
 log "Attaching Cloud-Init drive..."
 qm set $VMID --ide2 $STORAGE:cloudinit
 
-# --- v24's Winning Combo ---
 log "Setting Cloud-Init (The *Working* Way)..."
 qm set $VMID --ipconfig0 ip=dhcp
-qm set $VMID
+qm set $VMID --sshkey "${SSH_KEYS_FILE}"
+qm set $VMID --cicustom "user=local:snippets/cloud-init-${VM_NAME}.yaml"
+qm set $VMID --serial0 socket
+
+log "Resizing disk..."
+qm resize $VMID scsi0 ${DISK_SIZE}
+
+log "Starting VM ${VMID}..."
+qm start $VMID
+
+log "--- All Done! ---"
+log "VM ${VMID} is booting. This is v26 (the final bugfix)."
+log "This WILL take 10-15 minutes. The serial console will hang while 'pacman' runs."
+log "Watch with: qm terminal $VMID"
+log "After 15-20 min, open the SPICE console. You should see Hyprland."
