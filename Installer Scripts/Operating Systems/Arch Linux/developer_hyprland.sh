@@ -12,15 +12,12 @@ STORAGE="local-zfs"
 LOCAL_STORAGE="local"
 
 # User settings
-USERNAME="dev"
+NEW_USERNAME="dev"
 
-# SSH key is now MANDATORY for user creation
+# SSH key (v28 check)
 SSH_KEYS_FILE="${HOME}/.ssh/authorized_keys"
-# v28's robust check is still the only good idea I've had.
 if [ ! -r "$SSH_KEYS_FILE" ] || ! grep -q -E "^ssh" "$SSH_KEYS_FILE"; then
     echo "ERROR: Failed to read a valid public SSH key from ${SSH_KEYS_FILE}."
-    echo "This file must exist, be readable, and contain at least one line"
-    echo "starting with 'ssh-rsa', 'ssh-ed25519', etc."
     echo "Please add your valid *.pub key to that file."
     exit 1
 fi
@@ -46,49 +43,59 @@ fi
 log "Creating Cloud-Init config snippet..."
 SNIPPET_PATH="/var/lib/vz/snippets/cloud-init-${VM_NAME}.yaml"
 
-# --- v26: This is v25 with the service start/docker.conf bugs fixed ---
+# --- v33: "Rosetta Stone" logic + CORRECT escaping ---
 cat > $SNIPPET_PATH << EOF
 #cloud-config
 fqdn: ${VM_NAME}
 ssh_pwauth: false
+
+# v33: We only modify the 'root' user, just like the "Rosetta Stone" script.
 users:
-  - name: ${USERNAME}
-    gecos: ${USERNAME}
-    groups: [wheel, docker]
-    sudo: ['ALL=(ALL) NOPASSWD:ALL']
-    shell: /bin/bash
+  - name: root
+    groups: docker
     ssh_authorized_keys:
 $(cat ${SSH_KEYS_FILE} | grep -E "^ssh" | xargs -iXX echo "      - XX")
 
+# v33: Use "list of quoted strings" syntax from "Rosetta"
+# AND correctly escape $ and " inside the EOF block.
 runcmd:
   # --- 1. THE GPG FIX ---
-  - [ sh, -c, "rm -rf /etc/pacman.d/gnupg" ]
-  - [ pacman-key, --init ]
-  - [ pacman-key, --populate, archlinux ]
+  - "sh -c 'rm -rf /etc/pacman.d/gnupg'"
+  - "pacman-key --init"
+  - "pacman-key --populate archlinux"
   
   # --- 2. System Update & Base Tools ---
-  - [ pacman, -Syu, --noconfirm ]
-  - [ pacman, -S, --noconfirm, qemu-guest-agent ]
-  - [ systemctl, enable, --now, qemu-guest-agent ]
+  - "pacman -Syu --noconfirm"
+  - "pacman -S --noconfirm qemu-guest-agent sudo"
+  - "systemctl enable --now qemu-guest-agent"
   
-  # --- 3. Install Our GUI/Dev Apps ---
-  - [ pacman, -S, --noconfirm, base-devel, git, sudo, hyprland, alacritty, kitty, neovim, nodejs, npm, python, python-pip, go, docker, docker-compose, firefox, chromium, thunderbird, samba ]
+  # --- 3. Create our 'dev' user manually ---
+  - "useradd -m -G wheel,docker -s /bin/bash ${NEW_USERNAME}"
+  - "sh -c \"echo '%wheel ALL=(ALL:ALL) NOPASSWD: ALL' > /etc/sudoers.d/99-wheel-nopasswd\""
   
-  # --- 4. Enable Services (THE v26 FIX) ---
-  # We use 'enable' (not 'enable --now') so they start on first real boot
-  - [ systemctl, enable, docker ]
-  - [ systemctl, enable, smb ]
-  - [ systemctl, enable, nmb ]
-  # REMOVED buggy 'systemd-tmpfiles' line
+  # --- 4. Copy SSH keys from root to new user ---
+  - "mkdir -p /home/${NEW_USERNAME}/.ssh"
+  - "sh -c 'cp /root/.ssh/authorized_keys /home/${NEW_USERNAME}/.ssh/authorized_keys'"
+  - "chown -R ${NEW_USERNAME}:${NEW_USERNAME} /home/${NEW_USERNAME}/.ssh"
+  - "chmod 700 /home/${NEW_USERNAME}/.ssh"
+  - "chmod 600 /home/${NEW_USERNAME}/.ssh/authorized_keys"
+
+  # --- 5. Install Our GUI/Dev Apps ---
+  - "pacman -S --noconfirm base-devel git hyprland alacritty kitty neovim nodejs npm python python-pip go docker docker-compose firefox chromium thunderbird samba"
   
-  # --- 5. Autologin & Hyprland Start ---
-  - [ mkdir, -p, /etc/systemd/system/getty@tty1.service.d ]
-  - [ sh, -c, "echo '[Service]' > /etc/systemd/system/getty@tty1.service.d/override.conf" ]
-  - [ sh, -c, "echo 'ExecStart=' >> /etc/systemd/system/getty@tty1.service.d/override.conf" ]
-  - [ sh, -c, "echo 'ExecStart=-/sbin/agetty --autologin ${USERNAME} --noclear %I \$TERM' >> /etc/systemd/system/getty@tty1.service.d/override.conf" ]
-  - [ systemctl, daemon-reload ]
-  - [ sh, -c, "echo 'if [ -z \"\$DISPLAY\" ] && [ \"\$(tty)\" = \"/dev/tty1\" ]; then exec Hyprland; fi' >> /home/${USERNAME}/.bash_profile" ]
-  - [ chown, "${USERNAME}:${USERNAME}", /home/${USERNAME}/.bash_profile ]
+  # --- 6. Enable Services (The v26 fix) ---
+  - "systemctl enable docker"
+  - "systemctl enable smb"
+  - "systemctl enable nmb"
+  
+  # --- 7. Autologin & Hyprland Start (for the NEW user) ---
+  - "mkdir -p /etc/systemd/system/getty@tty1.service.d"
+  - "sh -c \"echo '[Service]' > /etc/systemd/system/getty@tty1.service.d/override.conf\""
+  - "sh -c \"echo 'ExecStart=' >> /etc/systemd/system/getty@tty1.service.d/override.conf\""
+  - "sh -c \"echo 'ExecStart=-/sbin/agetty --autologin ${NEW_USERNAME} --noclear %I \$TERM' >> /etc/systemd/system/getty@tty1.service.d/override.conf\""
+  - "systemctl daemon-reload"
+  - "sh -c \"echo 'if [ -z \\\$DISPLAY ] && [ \\\"\$(tty)\\\" = \\\"/dev/tty1\\\" ]; then exec Hyprland; fi' >> /home/${NEW_USERNAME}/.bash_profile\""
+  - "chown ${NEW_USERNAME}:${NEW_USERNAME} /home/${NEW_USERNAME}/.bash_profile"
 EOF
 
 # --- 4. Create and Configure VM ---
@@ -139,7 +146,6 @@ log "Starting VM ${VMID}..."
 qm start $VMID
 
 log "--- All Done! ---"
-log "VM ${VMID} is booting. This is v26."
-log "This WILL take 10-15 minutes. The serial console will hang while 'pacman' runs."
+log "VM ${VMID} is booting. This is v33."
 log "Watch with: qm terminal $VMID"
-log "After 15-20 min, open the SPICE console. You should see Hyprland."
+log "This combines the 'Rosetta' syntax with our fixes."
